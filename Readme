@@ -1,0 +1,3 @@
+# Rounded edge airfoil generator
+This project is used for generating rounded Leading Edge or Trailing Edge 2-D airfoil coordinate.
+The base shape of this code will use elliptical shape airfoil, and expect to expand to modify the NACA series airfoil .
