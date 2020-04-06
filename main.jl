@@ -2,7 +2,10 @@
 # Developed by Yi Tsung Lee, NCSU AE
 # The generated file will have the LE coordinate near (0,0)
 # The generated file will have the TE coordinate at (c,0)
-# change the
+# outputfile will be in xfoil format(out_type =1)
+# outputfile include num point in the section and 3-d coordinate (out_type =2)
+
+# Remenber to check the working directory first for file saving
 
 using Plots
 using DelimitedFiles
@@ -27,10 +30,10 @@ function main()
    num_up = round(Int8,(num_p-num_tp+2)/2) # upper surface point number
    num_lp = round(Int8,num_p-num_tp+1-num_up+2) # lower surface point number
 
-   xy  = Array{Float64,2}(undef,num_p,2)   # xy data set
-   xy_l = Array{Float64,2}(undef,num_lp,2) # xy data set for lower surface
-   xy_u = Array{Float64,2}(undef,num_up,2) # xy data set for upper surface
-   xy_t = Array{Float64,2}(undef,num_tp,2) # xy data set for trailing edge section
+   xy  = zeros(Float64,num_p,2)   # xy data set (for xfoil))
+   xyz_l = zeros(Float64,num_lp,3) # xyz data set for lower surface
+   xyz_u = zeros(Float64,num_up,3) # xyz data set for upper surface
+   xyz_t = zeros(Float64,num_tp,3) # xyz data set for trailing edge section
 
    # start of the coordinate generation
 
@@ -42,11 +45,11 @@ function main()
    # distribute the data to xy_l,xy_u and xy_t section
    p_start = num_tp-round(Int8,num_tp/2)
    p_end = p_start + num_up-1
-   xy_u = xy[p_start:p_end,:]
+   xyz_u[1:num_up,1:2] = xy[p_start:p_end,:]
 
    p_start = p_end
    p_end = p_start + num_lp-1
-   xy_l = xy[p_start:p_end,:]
+   xyz_l = xy[p_start:p_end,:]
 
    p_start = p_end
    p_end = p_start + num_tp-1
@@ -56,7 +59,7 @@ function main()
        if z == 0
           z = num_p
        end
-       xy_t[j,:] = xy[z,:]
+       xyz_t[j,1:2] = xy[z,:]
    end
 
    # write the file output
@@ -72,18 +75,18 @@ function main()
    elseif out_type == 2
 
       fid = open("ellip_t$(max_t*100)c$(camber*100)_te.xy","w")
-      println(fid,"ellip_t$(max_t*100)c$(camber*100)_te")
-      writedlm(fid,xy_t)
+      writedlm(fid,num_tp)
+      writedlm(fid,xyz_t)
       close(fid)
 
       fid = open("ellip_t$(max_t*100)c$(camber*100)_us.xy","w")
-      println(fid,"ellip_t$(max_t*100)c$(camber*100)_us")
-      writedlm(fid,xy_u)
+      writedlm(fid,num_up)
+      writedlm(fid,xyz_u)
       close(fid)
 
       fid = open("ellip_t$(max_t*100)c$(camber*100)_ls.xy","w")
-      println(fid,"ellip_t$(max_t*100)c$(camber*100)_ls")
-      writedlm(fid,xy_l)
+      writedlm(fid,num_lp)
+      writedlm(fid,xyz_l)
       close(fid)
 
    end
