@@ -33,88 +33,29 @@ function main()
    camber::Float64 = 0.06 # camber (in y/c )
 
    # =============== control variable section ================
-
-   #initilize
-   num_tp = round(Int64,num_p*0.03) # TE point number (3% ofoverall point)
-   num_up = round(Int64,(num_p-num_tp+2)/2) # upper surface point number
-   num_lp = round(Int64,num_p-num_tp+1-num_up+2) # lower surface point number
-
-   xy  = zeros(Float64,num_p,2)    # xy data set (for xfoil))
-   xy_c = zeros(Float64,num_p,2)   # xy data for camber line
-   xyz_l = zeros(Float64,num_lp,3) # xyz data set for lower surface
-   xyz_u = zeros(Float64,num_up,3) # xyz data set for upper surface
-   xyz_t = zeros(Float64,num_tp,3) # xyz data set for trailing edge section
-
    # start of the coordinate generation
 
-   (xy,xy_c) = ellipse(num_p,c,max_t,camber,xy,xy_c)
-   pl = plot(xy[:,1],xy[:,2],aspect_ratio = 1,
-        title = "ellip_t$(max_t*100)c$(camber*100)",labels ="shape")
-   pl = plot!(xy_c[:,1],xy_c[:,2],labels = "camber")
-   display(pl)
-
-   # distribute the data to xy_l,xy_u and xy_t section
-   p_start = num_tp-round(Int8,num_tp/2)
-   p_end = p_start + num_up-1
-   xyz_u[1:num_up,1:2] = xy[p_start:p_end,:]
-
-   p_start = p_end
-   p_end = p_start + num_lp-1
-   xyz_l = xy[p_start:p_end,:]
-
-   p_start = p_end
-   p_end = p_start + num_tp-1
-   for i = p_start:p_end
-       j = i + 1 - p_start
-       z = mod(i,num_p)
-       if z == 0
-          z = num_p
-       end
-       xyz_t[j,1:2] = xy[z,:]
-   end
-
-   # write the file output
-   # out_type = 1:xfoil data; = 2: 3 section data
-   if out_type == 1
-
-      fid = open("ellip_t$(max_t*100)c$(camber*100).xy","w")
-      println(fid,"ellip_t$(max_t*100)c$(camber*100)")
-      writedlm(fid,xy)
-      writedlm(fid,xy[1,:]')
-      close(fid)
-
-   elseif out_type == 2
-
-      fid = open("ellip_t$(max_t*100)c$(camber*100)_te.xy","w")
-      writedlm(fid,num_tp)
-      writedlm(fid,xyz_t)
-      close(fid)
-
-      fid = open("ellip_t$(max_t*100)c$(camber*100)_us.xy","w")
-      writedlm(fid,num_up)
-      writedlm(fid,xyz_u)
-      close(fid)
-
-      fid = open("ellip_t$(max_t*100)c$(camber*100)_ls.xy","w")
-      writedlm(fid,num_lp)
-      writedlm(fid,xyz_l)
-      close(fid)
-
-   end
+   ellipse(num_p,c,max_t,camber,out_type)
 
 end
 
-
+# elliptical shape generator
 function ellipse(num_p::Int64,c::Float64,max_t::Float64,
-               camber::Float64,xy::Array{Float64,2},xy_c::Array{Float64,2})
+                 camber::Float64,out_type::Int64)
+ # initialize
+  num_up = round(Int64,num_p/2+1)
+  num_lp = num_p-num_up+2
+
+  xy  = zeros(Float64,num_p,2)    # xy data set (for xfoil))
+  xy_c = zeros(Float64,num_p,2)   # xy data for camber line
+  xyz_l = zeros(Float64,num_lp,3) # xyz data set for lower surface
+  xyz_u = zeros(Float64,num_up,3) # xyz data set for upper surface
 
  # ellipse based coordinate
   for i  = 1:num_p
      theta = 2*pi/num_p*(i-1)
      xy[i,1] = c/2*(1+cos(theta))
      xy[i,2] = max_t/2*sin(theta)
-     #xy_ce[i,1] = xy[i,1]
-     #xy_ce[i,1] = xy[i,1]
   end
 
   # apply parabolic camberline
@@ -124,7 +65,7 @@ function ellipse(num_p::Int64,c::Float64,max_t::Float64,
   y(x) = -k*x*(x-c)  # parabolic equation function
   dy(x) = -2*k*x+c*k   # parabolic slope-2*k+c*k function
 
-  #store the expression of s(x) and its differentiate
+  # store the expression of s(x) and its differentiate
   s(x) = 1/2*x*sqrt(1+(2*k*x)^2)+1/(4*k)*log(sqrt(1+(2*k*x)^2)+2*k*x)
   ds(x) = 1/2*sqrt(1+(2*k*x)^2) + 1/2*x*(4*k^2*x/sqrt(1+(2*k*x)^2)) +
           1/(4*k)*(2*k+4*k^2*x/sqrt(1+(2*k*x)^2))/(sqrt(1+(2*k*x)^2)+2*k*x)
@@ -138,9 +79,8 @@ function ellipse(num_p::Int64,c::Float64,max_t::Float64,
   #print(s_c2,"\n")
   s_max = 2*s_c2
 
+  # calculate camber projection point and the the new shape cooinate based on elliptical
   for i = 1:num_p
-   # xy_ce[i,1] = xy[i,1]
-   # xy_ce[i,2] = y(xy_ce[i,1])
 
     x = xy[i,1]
     s_real(a) = x/c*s_max-s_c2 - s(a) # function for newton iteration
@@ -157,7 +97,42 @@ function ellipse(num_p::Int64,c::Float64,max_t::Float64,
     xy_c[i,2] = y_c
 
   end
-  return xy,xy_c
+
+  # Outpit file and distribute to upper surface and lower surface
+
+  xyz_u[1:num_up,1:2] = xy[1:num_up,:]
+  xyz_l[1:num_lp-1,1:2] = xy[num_up:num_p,:]
+  xyz_l[num_lp,1:2] = xy[1,:]
+  # write the file output
+  # out_type = 1:xfoil data; = 2: 3 section data
+  if out_type == 1
+
+     fid = open("ellip_t$(max_t*100)c$(camber*100).xy","w")
+     println(fid,"ellip_t$(max_t*100)c$(camber*100)")
+     writedlm(fid,xy)
+     writedlm(fid,xy[1,:]')
+     close(fid)
+
+  elseif out_type == 2
+
+     fid = open("ellip_t$(max_t*100)c$(camber*100)_us.dat","w")
+     writedlm(fid,num_up)
+     writedlm(fid,xyz_u)
+     close(fid)
+
+     fid = open("ellip_t$(max_t*100)c$(camber*100)_ls.dat","w")
+     writedlm(fid,num_lp)
+     writedlm(fid,xyz_l)
+     close(fid)
+
+  end
+
+  # plot the shape and camber profile
+  pl = plot(xy[:,1],xy[:,2],aspect_ratio = 1,
+      title = "ellip_t$(max_t*100)c$(camber*100)",labels ="shape")
+  pl = plot!(xy_c[:,1],xy_c[:,2],labels = "camber")
+  display(pl)
+
 end
 
 function Newton_method(f::Function,f0::Function,x0::Float64,
@@ -182,7 +157,69 @@ function Newton_method(f::Function,f0::Function,x0::Float64,
 end
 
 # NACA shape generator
+#=
 function NACA_4()
-end
 
+
+  num_tp = round(Int64,num_p*0.03) # TE point number (3% ofoverall point)
+  num_up = round(Int64,(num_p-num_tp+2)/2) # upper surface point number
+  num_lp = round(Int64,num_p-num_tp+1-num_up+2) # lower surface point number
+
+  xy  = zeros(Float64,num_p,2)    # xy data set (for xfoil))
+  xy_c = zeros(Float64,num_p,2)   # xy data for camber line
+  xyz_l = zeros(Float64,num_lp,3) # xyz data set for lower surface
+  xyz_u = zeros(Float64,num_up,3) # xyz data set for upper surface
+  xyz_t = zeros(Float64,num_tp,3) # xyz data set for trailing edge section
+
+
+   # distribute the data to xy_l,xy_u and xy_t section
+   p_start = num_tp-round(Int8,num_tp/2)
+   p_end = p_start + num_up-1
+   xyz_u[1:num_up,1:2] = xy[p_start:p_end,:]
+
+   p_start = p_end
+   p_end = p_start + num_lp-1
+   xyz_l[1:num_up,1:2] = xy[p_start:p_end,:]
+
+   p_start = p_end
+   p_end = p_start + num_tp-1
+   for i = p_start:p_end
+       j = i + 1 - p_start
+       z = mod(i,num_p)
+       if z == 0
+          z = num_p
+       end
+       xyz_t[j,1:2] = xy[z,:]
+   end
+
+   # write the file output
+   # out_type = 1:xfoil data; = 2: 3 section data
+   if out_type == 1
+
+      fid = open("ellip_t$(max_t*100)c$(camber*100).xy","w")
+      println(fid,"ellip_t$(max_t*100)c$(camber*100)")
+      writedlm(fid,xy)
+      writedlm(fid,xy[1,:]')
+      close(fid)
+
+   elseif out_type == 2
+
+      fid = open("ellip_t$(max_t*100)c$(camber*100)_te*.dat","w")
+      writedlm(fid,num_tp)
+      writedlm(fid,xyz_t)
+      close(fid)
+
+      fid = open("ellip_t$(max_t*100)c$(camber*100)_us*.dat","w")
+      writedlm(fid,num_up)
+      writedlm(fid,xyz_u)
+      close(fid)
+
+      fid = open("ellip_t$(max_t*100)c$(camber*100)_ls*.dat","w")
+      writedlm(fid,num_lp)
+      writedlm(fid,xyz_l)
+      close(fid)
+
+   end
+end
+=#
 main()
