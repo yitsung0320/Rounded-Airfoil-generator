@@ -15,6 +15,7 @@ Pkg.add("Calculus") # Derrivative Pkg
 
 using Plots
 using DelimitedFiles
+using LinearAlgebra
 #using QuadGK
 #using Calculus
 gr()
@@ -46,33 +47,49 @@ function ellipse(num_p::Int64,c::Float64,max_t::Float64,
   num_up = round(Int64,num_p/2+1)
   num_lp = num_p-num_up+2
 
-  xy  = zeros(Float64,num_p,2)    # xy data set (for xfoil))
-  xy_c = zeros(Float64,num_p,2)   # xy data for camber line
+  theta = zeros(Float64,num_p+1)  # theta used to generate the x point value
+  xy  = zeros(Float64,num_p+1,2)  # xy data set (for xfoil),num_p+1 is identical to point 1
+  xy_c = zeros(Float64,num_p+1,2) # xy data for camber line
   xyz_l = zeros(Float64,num_lp,3) # xyz data set for lower surface
   xyz_u = zeros(Float64,num_up,3) # xyz data set for upper surface
 
  # ellipse based coordinate
-  for i  = 1:num_p
-     theta = 2*pi/num_p*(i-1)
-     xy[i,1] = c/2*(1+cos(theta))
-     xy[i,2] = max_t/2*sin(theta)
+  # equal spacing theta generation
+ x_ellip(a) = c/2*(1+cos(a)) # elliptical x function (a= theta here)
+ y_ellip(a) = max_t/2*sin(a) # elliptical y function (a= theta here)
+ r_p = 0.25  # refinement portion, should be between 0~25%
+ r_ratio = refinement_iteration(x_ellip,y_ellip,num_p,r_p)
+
+  # initialize the theta
+  for i  = 1:num_p+1
+     theta[i] = 2*pi/num_p*(i-1)
+  end
+  #  do the actual refinement
+  theta = refinement(r_ratio,1,round(Int64,num_p*r_p),theta)
+  theta = refinement(r_ratio,round(Int64,num_p*0.5),round(Int64,num_p*(0.5-r_p)),theta)
+  theta = refinement(r_ratio,round(Int64,num_p*0.5),round(Int64,num_p*(0.5+r_p)),theta)
+  theta = refinement(r_ratio,num_p+1,round(Int64,num_p*(1-r_p)),theta)
+
+  for i  = 1:num_p+1
+      xy[i,1] = x_ellip(theta[i])
+      xy[i,2] = y_ellip(theta[i])
   end
 
   # apply parabolic camberline
 
   # analytical intergration
   k = 4*camber/c
-  y(x) = -k*x*(x-c)  # parabolic equation function
-  dy(x) = -2*k*x+c*k   # parabolic slope-2*k+c*k function
+  y_para(x) = -k*x*(x-c)  # parabolic equation function
+  dy_para(x) = -2*k*x+c*k   # parabolic slope-2*k+c*k function
 
-  # store the expression of s(x) and its differentiate
+  # store the expression of s(x) and its differentiate function
   s(x) = 1/2*x*sqrt(1+(2*k*x)^2)+1/(4*k)*log(sqrt(1+(2*k*x)^2)+2*k*x)
   ds(x) = 1/2*sqrt(1+(2*k*x)^2) + 1/2*x*(4*k^2*x/sqrt(1+(2*k*x)^2)) +
           1/(4*k)*(2*k+4*k^2*x/sqrt(1+(2*k*x)^2))/(sqrt(1+(2*k*x)^2)+2*k*x)
   # pure elliptical exception (no camber)
   if k == 0
     s(x) = x
-    ds(x) =0
+    ds(x) = 0
   end
 
   s_c2 = s(c/2)
@@ -80,14 +97,14 @@ function ellipse(num_p::Int64,c::Float64,max_t::Float64,
   s_max = 2*s_c2
 
   # calculate camber projection point and the the new shape cooinate based on elliptical
-  for i = 1:num_p
+  for i = 1:num_p+1
 
     x = xy[i,1]
     s_real(a) = x/c*s_max-s_c2 - s(a) # function for newton iteration
     ds_real(a) = -1*ds(a) #
     x_c = c/2 + Newton_method(s_real,ds_real,x-c/2) # camber x position
-    y_c = y(x_c)
-    dy_c = dy(x_c)
+    y_c = y_para(x_c)
+    dy_c = dy_para(x_c)
 
     t_2 = xy[i,2]   # thickness/2
     L = sqrt(1 + dy_c^2)
@@ -135,13 +152,69 @@ function ellipse(num_p::Int64,c::Float64,max_t::Float64,
 
 end
 
+function refinement(r::Float64,P1::Int64,P2::Int64,theta::Vector{Float64})
+
+     n = abs(P2-P1)  #P2 P1 is the data point index in series, n will be section number
+                     # P2 is the coarse side P1 is the fine side
+     b = zeros(Float64,n) #b is tje new section length after refinement
+
+     T = abs(theta[P2]-theta[P1]) # total length of the refinement section
+     dir =convert(Int64,(P2-P1)/abs(P2-P1)) # dir is used to define whether distance should
+                             # be added forward the point or subtracted backward
+
+     for i = 1:n
+       b[i] = T*(r-1)/(r^n-1)*r^(i-1)
+       theta[P1+dir*i] = theta[P1+dir*(i-1)] + dir*b[i]
+     end
+  return theta
+
+end
+
+function refinement_iteration(x::Function,y::Function,num_p::Int64,r_p::Float64)
+
+  # r_p    = 0.25 # refinement portion : should be 0 ~ 25%
+  #r_ratio = 1.01 # refinement gepmetric seroies ratio, can not be 1.0
+                  # since it will break the geometric seried
+
+  # initilize equal space input for doorcinate
+  theta = zeros(Float64,num_p+1)
+
+  for i  = 1:num_p+1
+     theta[i] = 2*pi/num_p*(i-1)
+  end
+
+  # iteration to find r_ratio for the segment near the edge is small enough
+  xy_edge = zeros(Float64,2,2) # initialize xy data near edge
+
+  for iter = 1 : 100
+    r_ratio = 1.01 + (iter-1)*0.01
+    theta = refinement(r_ratio,1,round(Int64,num_p*r_p),theta)
+
+    for i  = 1:2
+    xy_edge[i,1] = x(theta[i])
+    xy_edge[i,2] = y(theta[i])
+    end
+
+    e_l = norm(xy_edge[2,:]-xy_edge[1,:]) #near edge section length
+    if e_l <= 1e-5
+      print("near edge length = ",e_l,"\n")
+      print("refinement ratio=",r_ratio,"\n")
+      print("refinement succeed \n")
+      return r_ratio
+    end
+  end
+  @warn("refinement failed, can't get sufficient
+         refinement_ratio under the refinement portion and total point setting")
+
+end
+
 function Newton_method(f::Function,f0::Function,x0::Float64,
   tol::Float64 = 1e-5,maxiter::Integer=200, eps::Float64=1e-10,m::Float64 = 0.7)
 
      for i = 1:maxiter
        f0_value = f0(x0)
        if abs(f0_value) < eps
-          @warn("first derivative is zero! \n")
+          # @warn("first derivative is zero! \n")
           return x0
        end
        f_value = f(x0)
@@ -170,6 +243,23 @@ function NACA_4()
   xyz_l = zeros(Float64,num_lp,3) # xyz data set for lower surface
   xyz_u = zeros(Float64,num_up,3) # xyz data set for upper surface
   xyz_t = zeros(Float64,num_tp,3) # xyz data set for trailing edge section
+
+
+  # refinement iteration
+  x_naca(a) = c/2*(1+cos(a)) # elliptical x function (a= theta here)
+  y_naca(a) = max_t/2*sin(a) # elliptical y function (a= theta here)
+  r_p = 0.25  # refinement portion, should be between 0~25%
+  r_ratio = refinement_iteration(x_ellip,y_ellip,num_p,r_p)
+
+   # initialize the theta
+   for i  = 1:num_p+1
+      theta[i] = 2*pi/num_p*(i-1)
+   end
+   #  do the actual refinement
+   theta = refinement(r_ratio,1,round(Int64,num_p*r_p),theta)
+   theta = refinement(r_ratio,round(Int64,num_p*0.5),round(Int64,num_p*(0.5-r_p)),theta)
+   theta = refinement(r_ratio,round(Int64,num_p*0.5),round(Int64,num_p*(0.5+r_p)),theta)
+   theta = refinement(r_ratio,num_p+1,round(Int64,num_p*(1-r_p)),theta)
 
 
    # distribute the data to xy_l,xy_u and xy_t section
